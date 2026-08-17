@@ -1,0 +1,5 @@
+# Athenaeum's Python tooling — data work alongside the Express API.
+pymongo>=4.6
+pandas>=2.0
+# Only needed by export.py for real .xlsx files:
+openpyxl>=3.1

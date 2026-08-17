@@ -1,0 +1,24 @@
+# Deploying Athenaeum as one service.
+#
+# The Express server serves both the API and the built frontend, so there is a
+# single origin: no CORS to configure and no separate frontend deployment to
+# keep in step.
+#
+# MONGODB_URI is deliberately marked sync:false — it is a secret and belongs in
+# the dashboard, never in a file that goes to GitHub.
+
+services:
+  - type: web
+    name: athenaeum
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: node server/index.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_DB
+        value: library_management_system
+      - key: MONGODB_URI
+        sync: false

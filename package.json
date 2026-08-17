@@ -1,0 +1,30 @@
+{
+  "name": "library-management-system",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "server": "node --env-file-if-exists=.env --watch server/index.js",
+    "seed:personnel": "node --env-file-if-exists=.env server/seed-personnel.js",
+    "build": "vite build",
+    "preview": "vite preview",
+    "seed:library": "node --env-file-if-exists=.env server/seed-library.js",
+    "start": "node --env-file-if-exists=.env server/index.js",
+    "db:check": "node --env-file-if-exists=.env tools/check-db.mjs"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "mongodb": "^7.5.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-router-dom": "^7.18.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "tailwindcss": "^4.3.3",
+    "vite": "^8.2.0"
+  }
+}

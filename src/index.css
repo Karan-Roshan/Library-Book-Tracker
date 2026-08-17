@@ -1,0 +1,184 @@
+/* Tailwind setup plus the colour, font and animation tokens the whole app uses. */
+
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+
+  --color-ink-50: #f4f6f8;
+  --color-ink-100: #e6ebf0;
+  --color-ink-200: #c9d4de;
+  --color-ink-300: #9fb0c1;
+  --color-ink-400: #6c8299;
+  --color-ink-500: #4a6076;
+  --color-ink-600: #38495c;
+  --color-ink-700: #2b3a49;
+  --color-ink-800: #1d2836;
+  --color-ink-900: #131c28;
+  --color-ink-950: #0a1119;
+
+  --color-brass-50: #fbf7ef;
+  --color-brass-100: #f5ecd8;
+  --color-brass-200: #ead6ac;
+  --color-brass-300: #ddb977;
+  --color-brass-400: #d0a052;
+  --color-brass-500: #c08a3e;
+  --color-brass-600: #a26e33;
+  --color-brass-700: #83562d;
+  --color-brass-800: #6c472b;
+  --color-brass-900: #5b3d27;
+
+  --color-parchment: #f8f5ee;
+
+  --font-display: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia,
+    'Times New Roman', serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+
+  --animate-rise: rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-fade: fade 0.4s ease-out both;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+:root {
+  --viz-surface: #ffffff;
+  --viz-grid: #e7e2d7;
+  --viz-axis: #cdc6b6;
+  --viz-series-1: #2a78d6;
+  --viz-series-2: #eb6834;
+  --viz-series-3: #1baf7a;
+  --viz-series-4: #eda100;
+  --viz-series-5: #e87ba4;
+  --viz-seq-100: #cde2fb;
+  --viz-seq-250: #86b6ef;
+  --viz-seq-400: #3987e5;
+  --viz-seq-550: #1c5cab;
+}
+
+.dark {
+  --viz-surface: #131c28;
+  --viz-grid: #24313f;
+  --viz-axis: #38495c;
+  --viz-series-1: #3987e5;
+  --viz-series-2: #d95926;
+  --viz-series-3: #199e70;
+  --viz-series-4: #c98500;
+  --viz-series-5: #d55181;
+  --viz-seq-100: #184f95;
+  --viz-seq-250: #256abf;
+  --viz-seq-400: #3987e5;
+  --viz-seq-550: #86b6ef;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-parchment font-sans text-ink-800 antialiased;
+    @apply dark:bg-ink-950 dark:text-ink-200;
+  }
+
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-brass-500;
+  }
+}
+
+@layer components {
+
+  .spine-pattern {
+    background-image: repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.05) 0px,
+      rgba(255, 255, 255, 0.05) 1px,
+      transparent 1px,
+      transparent 9px,
+      rgba(255, 255, 255, 0.03) 9px,
+      rgba(255, 255, 255, 0.03) 10px,
+      transparent 10px,
+      transparent 23px
+    );
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media print {
+  .no-print,
+  aside,
+  nav[aria-label='Main'],
+  header[role='banner'] {
+    display: none !important;
+  }
+
+  main,
+  body > div {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  :root {
+    color-scheme: light;
+  }
+
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  section,
+  table {
+    break-inside: avoid;
+    box-shadow: none !important;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tr {
+    break-inside: avoid;
+  }
+
+  .overflow-x-auto,
+  .overflow-y-auto,
+  .overflow-auto {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  @page {
+    margin: 14mm;
+  }
+}
