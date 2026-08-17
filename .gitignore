@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Environment — never commit secrets
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+build/
+.vite/
+
+# ML artifacts — models and indexes are built, not committed
+*.faiss
+*.onnx
+*.pkl
+*.joblib
+mlruns/
+models/artifacts/
+
+# Logs & coverage
+*.log
+npm-debug.log*
+coverage/
+.pytest_cache/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+__pycache__/
