@@ -1,15 +1,15 @@
 // One member's full record, as staff see it.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import Breadcrumbs from '../components/layout/Breadcrumbs.jsx'
 import Card from '../components/dashboard/Card.jsx'
 import StatCard from '../components/dashboard/StatCard.jsx'
 import { usePreferences } from '../context/PreferencesContext.jsx'
+import { useCirculation } from '../hooks/useCirculation.js'
 import { library } from '../data/demoLibrary.js'
 import { formatCurrency, formatDate } from '../lib/format.js'
-import { borrowingHistory, composeMembers } from '../lib/members.js'
-import * as membersService from '../services/members.js'
+import { borrowingHistory } from '../lib/members.js'
 
 const STATUS_BADGE = {
   Borrowed: 'border-ink-200 bg-ink-50 text-ink-700 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200',
@@ -42,27 +42,19 @@ export default function MemberProfilePage() {
   const { id } = useParams()
   const { locale } = usePreferences()
 
-  const [added, setAdded] = useState([])
-  const [overrides, setOverrides] = useState({})
-  const now = useMemo(() => new Date(), [])
-
-  useEffect(() => {
-    Promise.all([membersService.listAddedMembers(), membersService.listOverrides()]).then(
-      ([rows, patches]) => {
-        setAdded(rows)
-        setOverrides(patches)
-      },
-    )
-  }, [])
+  // The desk's reading of the register, so this page shows the same loans and
+  // holds as the circulation screens rather than the seeded catalogue alone.
+  const desk = useCirculation()
+  const { now } = desk
 
   const member = useMemo(
-    () => composeMembers({ library, added, overrides, now }).find((row) => row.id === id),
-    [added, overrides, now, id],
+    () => desk.members.find((row) => row.id === id),
+    [desk.members, id],
   )
 
   const history = useMemo(
-    () => (member ? borrowingHistory(member, library, now) : []),
-    [member, now],
+    () => (member ? borrowingHistory(member, library, desk.books, now) : []),
+    [member, desk.books, now],
   )
 
   if (!member) {

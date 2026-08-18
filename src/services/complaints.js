@@ -2,6 +2,9 @@
 
 import { storage } from './storage.js'
 import { record } from './activity.js'
+import { listAccounts } from './auth.js'
+import { notify } from './messages.js'
+import { CAPABILITIES, can } from '../lib/permissions.js'
 
 const COMPLAINTS = 'complaints'
 
@@ -17,6 +20,50 @@ const step = (by, from, to, note = null) => ({
   to,
   note,
 })
+
+// Everyone whose job it is to deal with complaints.
+async function complaintHandlers(exceptId) {
+  const accounts = await listAccounts()
+  return accounts
+    .filter((account) => !account.suspendedAt && account.id !== exceptId)
+    .filter((account) => can(account, CAPABILITIES.COMPLAINTS))
+    .map((account) => ({ id: account.id, name: account.name, role: account.role }))
+}
+
+// Puts a new complaint in the bell: the people who handle them hear about it,
+// and whoever raised it gets told it arrived. Best effort — a complaint is
+// still raised even if the notice cannot be written.
+async function announceComplaint(complaint) {
+  const raisedBy = complaint.raisedById ?? complaint.memberId
+  const raisedByName = complaint.raisedByName ?? complaint.memberName ?? 'Somebody'
+
+  const facts = [
+    `Category: ${complaint.category}`,
+    `Priority: ${complaint.priority}`,
+  ].join('\n')
+
+  try {
+    const handlers = await complaintHandlers(raisedBy)
+
+    await notify({
+      subject: `New complaint: ${complaint.subject || '(no subject)'}`,
+      body: `${raisedByName} raised a complaint.\n\n${facts}\n\n${complaint.details}`,
+      recipients: handlers,
+    })
+
+    if (raisedBy) {
+      await notify({
+        subject: `Complaint received: ${complaint.subject || '(no subject)'}`,
+        body:
+          `Your complaint has been logged and is waiting for somebody to pick it up. ` +
+          `You will find it under My Complaints.\n\n${facts}`,
+        recipients: [{ id: raisedBy, name: raisedByName, role: complaint.raisedByRole }],
+      })
+    }
+  } catch {
+    // The complaint itself is already safely logged.
+  }
+}
 
 // Logs a new complaint, from a member or from staff.
 export async function raiseComplaint({
@@ -72,6 +119,8 @@ export async function raiseComplaint({
       role: raisedByRole,
     },
   })
+
+  await announceComplaint(complaint)
 
   return complaint
 }

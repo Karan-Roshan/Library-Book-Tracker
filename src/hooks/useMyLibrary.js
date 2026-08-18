@@ -130,6 +130,9 @@ export function useMyLibrary() {
       library,
       added: raw.addedMembers,
       overrides: raw.memberOverrides,
+      issued: raw.issued,
+      reservations: raw.reservations,
+      rules,
       now,
     })
 
@@ -141,6 +144,7 @@ export function useMyLibrary() {
       overrides: raw.overrides,
       lostReports: raw.lostReports,
       books,
+      members,
       rules,
       now,
     })
@@ -149,6 +153,7 @@ export function useMyLibrary() {
       library,
       placed: raw.reservations,
       books,
+      members,
       rules,
       now,
     })
@@ -158,6 +163,8 @@ export function useMyLibrary() {
 
     const fineRecords = buildFineRecords({
       library: { ...library, borrowings: [...library.borrowings, ...raw.issued] },
+      books,
+      members,
       manualFines: raw.manualFines,
       payments: raw.payments,
       now,
@@ -167,7 +174,13 @@ export function useMyLibrary() {
     })
     const myFines = fineRecords.filter((row) => row.memberId === me?.membershipNumber)
 
-    const myLost = composeLostReports({ reports: raw.lostReports, library, books, borrowings: allBorrowings }).filter(
+    const myLost = composeLostReports({
+      reports: raw.lostReports,
+      library,
+      books,
+      members,
+      borrowings: allBorrowings,
+    }).filter(
       (row) => row.memberId === user?.memberId,
     )
 

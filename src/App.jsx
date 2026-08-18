@@ -3,6 +3,7 @@
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext.jsx'
 import { PreferencesProvider } from './context/PreferencesContext.jsx'
+import { ToastProvider } from './context/ToastContext.jsx'
 import { SettingsProvider } from './context/SettingsContext.jsx'
 import AppShell from './components/layout/AppShell.jsx'
 import LoginPage from './pages/LoginPage.jsx'
@@ -46,9 +47,7 @@ import MyReservations from './pages/member/MyReservations.jsx'
 import MyFines from './pages/member/MyFines.jsx'
 import MyComplaints from './pages/member/MyComplaints.jsx'
 import MyNotifications from './pages/member/MyNotifications.jsx'
-import MyStatistics from './pages/member/MyStatistics.jsx'
 import MyProfile from './pages/member/MyProfile.jsx'
-import MySettings from './pages/member/MySettings.jsx'
 import AddBookPage from './pages/AddBookPage.jsx'
 import Logo from './components/Logo.jsx'
 import { CAPABILITIES, can, isMember } from './lib/permissions.js'
@@ -77,9 +76,11 @@ function ProtectedShell() {
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />
 
   return (
-    <AppShell>
-      <Outlet />
-    </AppShell>
+    <ToastProvider>
+      <AppShell>
+        <Outlet />
+      </AppShell>
+    </ToastProvider>
   )
 }
 
@@ -165,9 +166,7 @@ export default function App() {
                 <Route path="fines" element={<MyFines />} />
                 <Route path="complaints" element={<MyComplaints />} />
                 <Route path="notifications" element={<MyNotifications />} />
-                <Route path="statistics" element={<MyStatistics />} />
                 <Route path="profile" element={<MyProfile />} />
-                <Route path="settings" element={<MySettings />} />
               </Route>
 
               <Route

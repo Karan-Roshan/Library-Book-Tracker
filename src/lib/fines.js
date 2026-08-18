@@ -1,6 +1,6 @@
 // What is owed and why, worked out from the dates rather than stored.
 
-import { buildIndex } from './analytics.js'
+import { indexById } from './join.js'
 
 import { bookCode } from './books.js'
 
@@ -60,6 +60,8 @@ const REGISTER_LIMIT = 295
 // The whole fines register, built from borrowings, hand-raised fines and payments.
 export function buildFineRecords({
   library,
+  books = [],
+  members = [],
   manualFines = [],
   payments = {},
   now = new Date(),
@@ -69,7 +71,12 @@ export function buildFineRecords({
 
   grace = 0,
 }) {
-  const { bookById, memberById } = buildIndex(library)
+  // The register has to name people and titles added after the seed, so index the
+  // composed lists first and fall back to the seeded catalogue.
+  const bookById = indexById(books, library.books)
+  const memberById = indexById(members, library.members)
+  const everyMember = [...memberById.values()]
+  const everyBook = [...bookById.values()]
   const overdue = []
   const records = []
 
@@ -115,8 +122,8 @@ export function buildFineRecords({
   records.push(...stillOwed, ...history)
 
   for (const fine of manualFines) {
-    const member = library.members.find((row) => row.membershipNumber === fine.memberId)
-    const book = library.books.find((row) => bookCode(row.id) === fine.bookId)
+    const member = everyMember.find((row) => row.membershipNumber === fine.memberId)
+    const book = everyBook.find((row) => bookCode(row.id) === fine.bookId)
 
     records.push({
       key: fine.id,

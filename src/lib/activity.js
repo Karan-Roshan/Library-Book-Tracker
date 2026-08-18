@@ -34,6 +34,7 @@ export const ACTIONS = {
   RESERVATION_READY: { label: 'Reservation Ready', module: 'Circulation' },
   RESERVATION_COLLECTED: { label: 'Reservation Collected', module: 'Circulation' },
   RESERVATION_CANCELLED: { label: 'Reservation Cancelled', module: 'Circulation' },
+  RESERVATION_DELETED: { label: 'Reservation Deleted', module: 'Circulation' },
   BOOK_LOST: { label: 'Book Reported Lost', module: 'Circulation' },
   BOOK_RECOVERED: { label: 'Lost Book Recovered', module: 'Circulation' },
   LOST_UPDATED: { label: 'Lost Report Updated', module: 'Circulation' },

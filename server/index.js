@@ -47,6 +47,7 @@ const VALUES = new Set([
   'memberOverrides',
   'borrowingOverrides',
   'circulationRules',
+  'reservationSequence',
   'settings',
 
   'preferences',

@@ -163,6 +163,15 @@ export async function changeOwnPassword(memberId, { current, next }) {
   })
 }
 
+// Keeps the sign-in record in step when a member renames themselves. The login
+// is stored apart from the member record, so without this the desk would see
+// the new name while the session, the bell and the audit trail kept the old.
+export async function renameLogin(memberId, name) {
+  const login = await accessFor(memberId)
+  if (!login || login.name === name) return null
+  return storage.update(LOGINS, login.id, { name })
+}
+
 // Re-reads a member's account, so revoked access stops working at once.
 export async function refreshMember(sessionUser) {
   const login = await accessFor(sessionUser.id)

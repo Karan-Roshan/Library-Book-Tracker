@@ -42,7 +42,17 @@ export const NOTIFICATION_EVENTS = [
   { key: 'overdue', label: 'Book overdue', hint: 'Chasing a book that is already late.' },
   { key: 'fineRaised', label: 'Fine generated', hint: 'When a charge is raised against a member.' },
   { key: 'finePaid', label: 'Fine payment received', hint: 'A receipt for money taken.' },
+  {
+    key: 'reservationPlaced',
+    label: 'Reservation placed',
+    hint: 'Confirmation when the desk holds a book for a member.',
+  },
   { key: 'reservationReady', label: 'Reservation available', hint: 'The held copy is on the counter.' },
+  {
+    key: 'reservationCancelled',
+    label: 'Reservation cancelled',
+    hint: 'When a hold is called off before it is collected.',
+  },
   {
     key: 'reservationExpiring',
     label: 'Reservation expiring',
@@ -50,12 +60,6 @@ export const NOTIFICATION_EVENTS = [
     lead: true,
   },
   { key: 'repairDone', label: 'Book repair completed', hint: 'A mended copy is back on the shelf.' },
-  {
-    key: 'membershipExpiry',
-    label: 'Membership expiry',
-    hint: 'Before a membership lapses.',
-    lead: true,
-  },
   { key: 'announcements', label: 'Announcements', hint: 'General notices to members and staff.' },
 ]
 
@@ -157,7 +161,6 @@ export const DEFAULT_SETTINGS = {
 
     dueSoonDays: 2,
     reservationExpiryDays: 1,
-    membershipExpiryDays: 14,
 
     overdueRepeatDays: 7,
     signature: 'Athenaeum',

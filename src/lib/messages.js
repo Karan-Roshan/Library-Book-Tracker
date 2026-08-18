@@ -7,10 +7,18 @@ const newestFirst = (a, b) =>
 export const addressedTo = (message, userId) =>
   message.recipients?.some((person) => person.id === userId) ?? false
 
-// Messages this person received.
+// Whether this person cleared it from their own inbox. Everyone else keeps theirs.
+export const isDeletedFor = (message, userId) => Boolean(message.deletedBy?.[userId])
+
+// Messages this person received and has not cleared.
 export function inboxFor(messages, userId) {
   return messages
-    .filter((message) => message.status === 'sent' && addressedTo(message, userId))
+    .filter(
+      (message) =>
+        message.status === 'sent' &&
+        addressedTo(message, userId) &&
+        !isDeletedFor(message, userId),
+    )
     .sort(newestFirst)
 }
 

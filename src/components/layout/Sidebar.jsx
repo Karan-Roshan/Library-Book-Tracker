@@ -54,15 +54,7 @@ const MEMBER_NAV = [
   { label: 'My Fines', to: '/my/fines', icon: ICONS.fines },
   { label: 'My Complaints', to: '/my/complaints', icon: ICONS.complaints },
   { label: 'Notifications', to: '/my/notifications', icon: ICONS.notifications },
-  { label: 'My Statistics', to: '/my/statistics', icon: ICONS.reports },
-  {
-    label: 'My Account',
-    icon: ICONS.profile,
-    children: [
-      { label: 'Profile & Membership', to: '/my/profile' },
-      { label: 'Account Settings', to: '/my/settings' },
-    ],
-  },
+  { label: 'My Account', to: '/my/profile', icon: ICONS.profile },
 ]
 
 const NAV = [

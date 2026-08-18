@@ -7,7 +7,13 @@ import { SEVERITY_FROM_CONDITION } from '../lib/repairs.js'
 import { nextLendable } from '../lib/copies.js'
 import { renewalExpiry } from '../lib/members.js'
 import { patchMember } from './members.js'
-import { sendMessage } from './messages.js'
+import { notifyMember, sendMessage } from './messages.js'
+import { library } from '../data/demoLibrary.js'
+import {
+  RESERVATION_SEQUENCE_MAX,
+  reservationNumber,
+  reservationSequenceOf,
+} from '../lib/ids.js'
 import {
   DEFAULT_RULES,
   NEEDS_REPAIR,
@@ -22,6 +28,7 @@ const OVERRIDES = 'borrowingOverrides'
 const RESERVATIONS = 'reservations'
 const LOST = 'lostReports'
 const RULES = 'circulationRules'
+const RESERVATION_SEQUENCE = 'reservationSequence'
 
 let ruleSource = null
 
@@ -240,9 +247,51 @@ export async function listReservations() {
   return storage.list(RESERVATIONS)
 }
 
-// Puts a member in the queue for a title.
-export async function placeReservation({ book, member, staff }) {
+// The next number in the reservation series. It is worked out from three
+// things at once so it can never hand out a number twice: the counter we keep,
+// the highest number already on a hold, and the seeded holds the demo library
+// starts with. Whichever is highest wins, and the counter moves past it — so a
+// number is not reused even after its reservation is deleted.
+async function nextReservationNumber(placed) {
+  const stored = Number(await storage.getValue(RESERVATION_SEQUENCE)) || 0
+  const counter = stored > RESERVATION_SEQUENCE_MAX ? 0 : stored
+
+  const highestPlaced = placed.reduce(
+    (top, row) => Math.max(top, reservationSequenceOf(row.code)),
+    0,
+  )
+  const seeded = library.reservations?.length ?? 0
+
+  const next = Math.max(counter, highestPlaced, seeded) + 1
+  await storage.setValue(RESERVATION_SEQUENCE, next)
+  return next
+}
+
+// Holds placed before this ran were numbered off their database id, which was
+// random. Give any that are still unnumbered — or that carry one of those old
+// unreadable references — a real one, oldest first, so the series has no gaps
+// and no repeats.
+async function numberOlderHolds(placed) {
+  const unnumbered = placed
+    .filter((row) => !reservationSequenceOf(row.code))
+    .sort((a, b) => new Date(a.reservedAt) - new Date(b.reservedAt))
+
+  for (const row of unnumbered) {
+    row.code = reservationNumber(await nextReservationNumber(placed))
+    await storage.update(RESERVATIONS, row.id, { code: row.code })
+  }
+  return placed
+}
+
+// Puts a member in the queue for a title. A member reserving for themselves has
+// already seen it happen on screen, so `byMember` suppresses the confirmation —
+// only a hold placed for them at the desk is worth a notice.
+export async function placeReservation({ book, member, staff, byMember = false }) {
+  const placed = await numberOlderHolds(await listReservations())
+  const code = reservationNumber(await nextReservationNumber(placed))
+
   const reservation = await storage.insert(RESERVATIONS, {
+    code,
     bookId: book.id,
     memberId: member.id,
     reservedAt: new Date().toISOString(),
@@ -253,10 +302,20 @@ export async function placeReservation({ book, member, staff }) {
     placedBy: staff ?? null,
   })
 
+  if (!byMember) {
+    await notifyMember('reservationPlaced', {
+      member,
+      subject: `Reservation placed: ${book.title}`,
+      body:
+        `The library has placed a hold on "${book.title}" (${book.code}) for you, reference ` +
+        `${code}. You will be told again once a copy is on the counter.`,
+    })
+  }
+
   await record('RESERVATION_PLACED', {
     target: book.title,
     targetType: 'reservation',
-    targetId: reservation.id,
+    targetId: code,
     after: { member: member.name, memberId: member.membershipNumber, book: book.code },
   })
   return reservation
@@ -273,6 +332,16 @@ export async function markReady(reservation, { rules, staff, silent = false } = 
   else await carryOver(reservation, patch)
 
   if (!silent) {
+    // The hold is marked notified, so the member has to actually be told.
+    await notifyMember('reservationReady', {
+      member: { id: reservation.memberId, name: reservation.memberName },
+      subject: `Ready to collect: ${reservation.bookTitle}`,
+      body:
+        `"${reservation.bookTitle}" is on the counter for you. Please collect it by ` +
+        `${expiresAt.slice(0, 10)}, after which the hold lapses and the copy goes to the next ` +
+        `member in the queue.`,
+    })
+
     await record('RESERVATION_READY', {
       target: reservation.bookTitle,
       targetType: 'reservation',
@@ -305,6 +374,14 @@ export async function cancelReservation(reservation, { reason, staff } = {}) {
   if (reservation.isDesk) await storage.update(RESERVATIONS, reservation.id, patch)
   else await carryOver(reservation, patch)
 
+  await notifyMember('reservationCancelled', {
+    member: { id: reservation.memberId, name: reservation.memberName },
+    subject: `Reservation cancelled: ${reservation.bookTitle}`,
+    body:
+      `Your hold on "${reservation.bookTitle}" has been cancelled` +
+      `${reason ? ` — ${reason}` : ''}. Ask at the desk if you would like it placed again.`,
+  })
+
   await record('RESERVATION_CANCELLED', {
     target: reservation.bookTitle,
     targetType: 'reservation',
@@ -315,9 +392,32 @@ export async function cancelReservation(reservation, { reason, staff } = {}) {
   })
 }
 
+// Removes a hold for good. A hold placed at the desk is a row of its own and
+// simply goes; a seeded one cannot be deleted from the demo catalogue, so it is
+// written down as deleted instead. Either way the change lands in the
+// reservations collection, which every open dashboard is listening to.
+export async function deleteReservation(reservation, { staff } = {}) {
+  if (reservation.isDesk) await storage.remove(RESERVATIONS, reservation.id)
+  else await carryOver(reservation, { deleted: true })
+
+  await record('RESERVATION_DELETED', {
+    target: reservation.bookTitle,
+    targetType: 'reservation',
+    targetId: reservation.code,
+    before: {
+      member: reservation.memberName,
+      memberId: reservation.memberNumber,
+      book: reservation.bookCode,
+      status: reservation.status,
+      placed: reservation.reservedAt,
+    },
+  })
+}
+
 async function carryOver(reservation, patch) {
   return storage.insert(RESERVATIONS, {
     id: reservation.id,
+    code: reservation.code,
     bookId: reservation.bookId,
     memberId: reservation.memberId,
     reservedAt: reservation.reservedAt,

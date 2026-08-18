@@ -1,6 +1,8 @@
 // The life of a borrowing: issue, return, renew, reserve, and the rules behind them.
 
 import { MEMBERSHIP_MONTHS } from './members.js'
+import { indexById } from './join.js'
+import { reservationNumber } from './ids.js'
 
 const DAY = 86_400_000
 
@@ -137,12 +139,15 @@ export function composeBorrowings({
   overrides = {},
   lostReports = [],
   books = [],
+  members = [],
   rules = DEFAULT_RULES,
   now = new Date(),
 }) {
-  const bookById = new Map(books.map((book) => [book.id, book]))
-  for (const book of library.books) if (!bookById.has(book.id)) bookById.set(book.id, book)
-  const memberById = new Map(library.members.map((member) => [member.id, member]))
+  const bookById = indexById(books, library.books)
+
+  // Members registered at the desk only exist in the composed list, so read that
+  // first — otherwise a book issued to one of them has no name against it.
+  const memberById = indexById(members, library.members)
 
   const lostByBorrowing = new Map()
   for (const report of lostReports) {
@@ -328,10 +333,14 @@ export const RESERVATION_BADGE = {
   Cancelled: 'border-ink-200 bg-ink-50 text-ink-500 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-400',
 }
 
-// The reference printed on a hold.
+// The reference printed on a hold. New holds are stamped with their own number
+// when they are placed; this works one out for the seeded and older rows that
+// were never given one.
 export const reservationCode = (id) => {
   const digits = String(id ?? '').replace(/\D/g, '')
-  return digits ? `RES-${digits.padStart(4, '0')}` : `RES-${String(id ?? '').slice(-4)}`
+  // A database id is far too long to read as a reference, so only its tail is
+  // kept. This is a stand-in until the hold is given a number of its own.
+  return reservationNumber((digits || String(id ?? '')).slice(-4))
 }
 
 // Holds joined to their book and member, with queue position worked out.
@@ -339,12 +348,15 @@ export function composeReservations({
   library,
   placed = [],
   books = [],
+  members = [],
   now = new Date(),
   rules = DEFAULT_RULES,
 }) {
-  const bookById = new Map(books.map((book) => [book.id, book]))
-  for (const book of library.books) if (!bookById.has(book.id)) bookById.set(book.id, book)
-  const memberById = new Map(library.members.map((member) => [member.id, member]))
+  const bookById = indexById(books, library.books)
+
+  // Members registered at the desk only exist in the composed list, so read that
+  // first and fall back to the seeded catalogue.
+  const memberById = indexById(members, library.members)
 
   const seeded = library.reservations.map((row) => ({
     id: row.id,
@@ -359,7 +371,10 @@ export function composeReservations({
 
   const byId = new Map(seeded.map((row) => [row.id, row]))
   for (const row of placed) byId.set(row.id, { ...row, isDesk: true })
-  const all = [...byId.values()]
+
+  // Seeded holds cannot be removed from the demo catalogue, so a deleted one is
+  // marked rather than dropped. Either way it leaves every screen.
+  const all = [...byId.values()].filter((row) => !row.deleted)
 
   const composed = all.map((row) => {
     const book = bookById.get(row.bookId)
@@ -372,7 +387,7 @@ export function composeReservations({
 
     return {
       ...row,
-      code: reservationCode(row.id),
+      code: row.code ?? reservationCode(row.id),
       book,
       member,
       bookTitle: book?.title ?? 'Unknown title',
@@ -633,11 +648,10 @@ export const lostCharge = (rules, replacementCost) => ({
 })
 
 // Lost reports joined to their book, member and borrowing.
-export function composeLostReports({ reports = [], library, books = [], borrowings = [] }) {
+export function composeLostReports({ reports = [], library, books = [], members = [], borrowings = [] }) {
   const transactionFor = new Map(borrowings.map((row) => [row.id, row.transaction]))
-  const bookById = new Map(books.map((book) => [book.id, book]))
-  for (const book of library.books) if (!bookById.has(book.id)) bookById.set(book.id, book)
-  const memberById = new Map(library.members.map((member) => [member.id, member]))
+  const bookById = indexById(books, library.books)
+  const memberById = indexById(members, library.members)
 
   return reports
     .map((report) => {

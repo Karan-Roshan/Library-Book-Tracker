@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext.jsx'
+import { useToast } from '../../context/ToastContext.jsx'
 import { usePreferences } from '../../context/PreferencesContext.jsx'
 import { formatDate } from '../../lib/format.js'
 import { issueEligibility } from '../../lib/circulation.js'
@@ -15,6 +16,7 @@ export default function MyBrowse({ mode = 'browse' }) {
   const { user } = useAuth()
   const { locale, system } = usePreferences()
   const my = useMyLibrary()
+  const { toast } = useToast()
   const [params, setParams] = useSearchParams()
 
   const query = params.get('q') ?? ''
@@ -74,12 +76,28 @@ export default function MyBrowse({ mode = 'browse' }) {
   const myBorrowings = new Set(my.out.map((borrowing) => borrowing.bookId))
 
   async function reserve(book) {
+    // Without a membership record there is nobody to put in the queue, and the
+    // desk has to sort it out.
+    if (!my.me) {
+      toast('Your membership record could not be found. Ask at the desk.', 'error')
+      return
+    }
+
     setBusy(true)
     try {
-      await circulation.placeReservation({ book, member: my.me, staff: `${my.me.name} (member)` })
+      await circulation.placeReservation({
+        book,
+        member: my.me,
+        staff: `${my.me.name} (member)`,
+        byMember: true,
+      })
       await my.refresh()
       setNotice(`You are in the queue for ${book.title}. You will be notified when it is ready.`)
       setDetail(null)
+    } catch (problem) {
+      // A hold that fails has to say so. Swallowing it leaves the button looking
+      // as though nothing happened at all.
+      toast(problem.message || `${book.title} could not be reserved. Try again.`, 'error')
     } finally {
       setBusy(false)
     }
@@ -127,13 +145,13 @@ export default function MyBrowse({ mode = 'browse' }) {
       )}
 
       <Card padded={false}>
-        <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+        <div className="grid grid-cols-[minmax(8rem,1fr)_minmax(9rem,12rem)_minmax(9rem,12rem)] items-center gap-3 overflow-x-auto px-4 py-3">
           <input
             type="search"
             value={query}
             onChange={(event) => set({ q: event.target.value })}
             placeholder="Search by title, author, ISBN, category or shelf…"
-            className={`${INPUT} max-w-lg`}
+            className={INPUT}
             aria-label="Search the catalogue"
             autoFocus={mode === 'search'}
           />
@@ -141,7 +159,7 @@ export default function MyBrowse({ mode = 'browse' }) {
             value={category}
             onChange={(event) => set({ category: event.target.value })}
             style={SELECT_ARROW}
-            className={`${SELECT} w-48`}
+            className={SELECT}
             aria-label="Category"
           >
             <option value="all">All categories</option>
@@ -155,14 +173,13 @@ export default function MyBrowse({ mode = 'browse' }) {
             value={availability}
             onChange={(event) => set({ have: event.target.value })}
             style={SELECT_ARROW}
-            className={`${SELECT} w-48`}
+            className={SELECT}
             aria-label="Availability"
           >
             <option value="all">Any availability</option>
             <option value="available">On the shelf now</option>
             <option value="unavailable">Currently out</option>
           </select>
-          <span className="ml-auto text-xs text-ink-400">{results.length} books</span>
         </div>
       </Card>
 

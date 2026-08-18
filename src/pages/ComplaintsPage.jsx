@@ -30,6 +30,7 @@ import {
 } from '../lib/complaints.js'
 import * as complaintsService from '../services/complaints.js'
 import * as membersService from '../services/members.js'
+import { composeMembers } from '../lib/members.js'
 import * as auth from '../services/auth.js'
 import { library } from '../data/demoLibrary.js'
 import {
@@ -117,10 +118,13 @@ export default function ComplaintsPage() {
     Promise.all([
       complaintsService.listComplaints(),
       membersService.listAddedMembers(),
+      membersService.listOverrides(),
       auth.listAccounts(),
-    ]).then(([complaints, added, accounts]) => {
+    ]).then(([complaints, added, overrides, accounts]) => {
       setRows(complaints)
-      setMembers([...library.members, ...added])
+      // Composed rather than concatenated, so a member renamed or struck off the
+      // register reads the same here as everywhere else.
+      setMembers(composeMembers({ library, added, overrides }))
       setStaff(accounts)
     })
   }, [])

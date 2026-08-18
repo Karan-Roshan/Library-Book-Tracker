@@ -88,6 +88,23 @@ export default function MemberDashboard() {
         />
       </div>
 
+      <Card title="Borrowing" subtitle="How many books you may hold at once">
+        <dl className="grid gap-4 sm:grid-cols-3">
+          {[
+            ['Borrowing limit', my.limit],
+            ['Currently borrowed', my.out.length],
+            ['Remaining capacity', my.remaining],
+          ].map(([label, value]) => (
+            <div key={label}>
+              <dt className="text-xs text-ink-400">{label}</dt>
+              <dd className="mt-1 text-2xl font-semibold leading-none text-ink-900 dark:text-white">
+                {value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </Card>
+
       <Card
         title="Currently issued"
         subtitle={`${my.out.length} of ${my.limit} allowed`}

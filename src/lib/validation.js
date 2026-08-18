@@ -19,6 +19,19 @@ export function normalizeName(value) {
     .replace(/(^|\s)(\S)/g, (match, space, letter) => space + letter.toUpperCase())
 }
 
+// Checks a date of birth. Blank is allowed — the library does not always hold one.
+export function validateDateOfBirth(value) {
+  if (!value) return null
+
+  const born = new Date(value)
+  if (Number.isNaN(born.getTime())) return 'Enter a real date.'
+
+  const today = new Date()
+  if (born > today) return 'Date of birth cannot be in the future.'
+  if (today.getFullYear() - born.getFullYear() > 120) return 'Check the year — that is over 120 years ago.'
+  return null
+}
+
 // Rejects obvious typos. It cannot prove an address is deliverable.
 export function validateEmail(value) {
   const email = value.trim()

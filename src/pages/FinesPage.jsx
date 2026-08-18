@@ -11,6 +11,7 @@ import RowMenu, { ACTION_CELL, ACTION_HEAD } from '../components/dashboard/RowMe
 import { useAuth } from '../context/AuthContext.jsx'
 import { usePageSize } from '../hooks/useTablePrefs.js'
 import { usePreferences } from '../context/PreferencesContext.jsx'
+import { useCirculation } from '../hooks/useCirculation.js'
 import { library } from '../data/demoLibrary.js'
 import { formatCurrency, formatDate } from '../lib/format.js'
 import {
@@ -132,6 +133,10 @@ export default function FinesPage() {
 
   const now = useMemo(() => new Date(), [])
 
+  // The composed catalogue and register, so a fine raised against someone added
+  // at the desk is named rather than left as a dash.
+  const desk = useCirculation()
+
   const refresh = useCallback(() => {
     Promise.all([
       fines.listManualFines(),
@@ -156,6 +161,8 @@ export default function FinesPage() {
     () =>
       buildFineRecords({
         library: withIssued,
+        books: desk.books,
+        members: desk.members,
         manualFines: manual,
         payments,
         now,
@@ -163,7 +170,7 @@ export default function FinesPage() {
         cap: rules?.maxFine,
         grace: rules?.graceDays,
       }),
-    [withIssued, manual, payments, now, rules],
+    [withIssued, desk.books, desk.members, manual, payments, now, rules],
   )
 
   const stats = useMemo(() => summarizeFines(records, now), [records, now])

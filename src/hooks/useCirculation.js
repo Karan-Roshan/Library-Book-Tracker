@@ -125,6 +125,9 @@ export function useCirculation() {
       library,
       added: raw.addedMembers,
       overrides: raw.memberOverrides,
+      issued: raw.issued,
+      reservations: raw.reservations,
+      rules,
       now,
     })
 
@@ -132,6 +135,7 @@ export function useCirculation() {
       library,
       placed: raw.reservations,
       books,
+      members,
       rules: rules ?? undefined,
       now,
     })
@@ -142,14 +146,17 @@ export function useCirculation() {
       overrides: raw.overrides,
       lostReports: raw.lostReports,
       books,
+      members,
       rules: rules ?? undefined,
       now,
     })
 
-    const lost = composeLostReports({ reports: raw.lostReports, library, books, borrowings })
+    const lost = composeLostReports({ reports: raw.lostReports, library, books, members, borrowings })
 
     const fineRecords = buildFineRecords({
       library: { ...library, borrowings: [...library.borrowings, ...raw.issued] },
+      books,
+      members,
       manualFines: raw.manualFines,
       payments: raw.payments,
       now,
@@ -164,13 +171,18 @@ export function useCirculation() {
       repairs: raw.repairs,
       lostReports: raw.lostReports,
       reservations,
-      books: library.books,
+      books,
       locations: library.locations ?? [],
       now,
     })
 
+    // One reading of the library for anything that works on whole collections —
+    // the dashboard figures above all — so no screen is left on the seeded data.
+    const live = { ...library, books, members, borrowings, reservations }
+
     return {
       rules,
+      live,
       books,
       copies,
       locations: library.locations ?? [],

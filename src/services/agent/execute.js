@@ -86,21 +86,32 @@ export async function snapshot() {
     reservations: reservationRows,
     now,
   })
-  const members = composeMembers({ library, added: addedMembers, overrides: memberOverrides, now })
+  const members = composeMembers({
+    library,
+    added: addedMembers,
+    overrides: memberOverrides,
+    issued,
+    reservations: reservationRows,
+    rules,
+    now,
+  })
   const borrowings = composeBorrowings({
     library,
     issued,
     overrides,
     lostReports: lostRows,
     books,
+    members,
     rules,
     now,
   })
-  const reservations = composeReservations({ library, placed: reservationRows, books, rules, now })
+  const reservations = composeReservations({ library, placed: reservationRows, books, members, rules, now })
   const repairs = composeRepairs({ repairs: repairRows, books, members })
-  const lost = composeLostReports({ reports: lostRows, library, books, borrowings })
+  const lost = composeLostReports({ reports: lostRows, library, books, members, borrowings })
   const fineRecords = buildFineRecords({
     library: { ...library, borrowings: [...library.borrowings, ...issued] },
+    books,
+    members,
     manualFines,
     payments,
     now,
@@ -115,7 +126,7 @@ export async function snapshot() {
     repairs: repairRows,
     lostReports: lostRows,
     reservations,
-    books: library.books,
+    books,
     locations: library.locations ?? [],
     now,
   })

@@ -1,6 +1,6 @@
 // The staff dashboard: the day's figures and what needs attention.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Breadcrumbs from '../components/layout/Breadcrumbs.jsx'
 import Card, { ViewToggle } from '../components/dashboard/Card.jsx'
 import StatCard from '../components/dashboard/StatCard.jsx'
@@ -21,14 +21,13 @@ import HorizontalBarChart from '../components/charts/HorizontalBarChart.jsx'
 import AreaChart from '../components/charts/AreaChart.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { usePreferences } from '../context/PreferencesContext.jsx'
-import { library } from '../data/demoLibrary.js'
+import { useCirculation } from '../hooks/useCirculation.js'
+import { useLive } from '../hooks/useLive.js'
 import * as analytics from '../lib/analytics.js'
 import { formatCompact, formatCurrency, formatNumber } from '../lib/format.js'
 import { CAPABILITIES, allowed, can } from '../lib/permissions.js'
 import { inboxFor, isUnread } from '../lib/messages.js'
 import * as messagesService from '../services/messages.js'
-import * as repairsService from '../services/repairs.js'
-import * as circulation from '../services/circulation.js'
 import { isOpen } from '../lib/repairs.js'
 
 function ChartCard({ title, subtitle, children, className }) {
@@ -47,13 +46,16 @@ function ChartCard({ title, subtitle, children, className }) {
 
 export default function DashboardPage() {
   const [unreadMessages, setUnreadMessages] = useState([])
-  const [openRepairs, setOpenRepairs] = useState(0)
-  const [openLosses, setOpenLosses] = useState(0)
 
   const { user } = useAuth()
   const { locale } = usePreferences()
 
-  useEffect(() => {
+  // The desk's own reading of the library, so the figures here are the same ones
+  // the circulation screens and the assistant are working from.
+  const desk = useCirculation()
+  const { live, now } = desk
+
+  const readMessages = useCallback(() => {
     messagesService.listMessages().then((rows) => {
       setUnreadMessages(
         inboxFor(rows, user.id).filter((message) => isUnread(message, user.id)).slice(0, 3),
@@ -61,38 +63,37 @@ export default function DashboardPage() {
     })
   }, [user.id])
 
-  useEffect(() => {
-    repairsService
-      .listRepairs()
-      .then((rows) => setOpenRepairs(rows.filter((row) => isOpen(row)).length))
-  }, [])
+  useEffect(readMessages, [readMessages])
+  useLive(['messages'], readMessages)
 
-  useEffect(() => {
-    circulation
-      .listLostReports()
-      .then((rows) => setOpenLosses(rows.filter((row) => !row.recoveredAt).length))
-  }, [])
+  const openRepairs = desk.repairs.filter(isOpen).length
+  const openLosses = desk.lost.filter((row) => !row.recoveredAt).length
 
-  const now = useMemo(() => new Date(), [])
   const data = useMemo(
     () => ({
-      stats: analytics.summarize(library, now),
-      status: analytics.bookStatus(library, now),
-      monthly: analytics.monthlyTransactions(library, now),
-      categories: analytics.categoryBorrows(library),
-      weekly: analytics.weeklyActivity(library, now),
-      today: analytics.todaySummary(library, now),
-      activity: analytics.recentActivity(library, now),
-      popular: analytics.popularBooks(library),
-      active: analytics.mostActiveMembers(library),
-      due: analytics.dueToday(library, now),
-      calendar: analytics.calendarMonth(library, now),
-      health: analytics.systemHealth(library),
+      stats: analytics.summarize(live, now),
+      status: analytics.bookStatus(live, now),
+      monthly: analytics.monthlyTransactions(live, now),
+      categories: analytics.categoryBorrows(live),
+      weekly: analytics.weeklyActivity(live, now),
+      today: analytics.todaySummary(live, now),
+      activity: analytics.recentActivity(live, now),
+      popular: analytics.popularBooks(live),
+      active: analytics.mostActiveMembers(live),
+      due: analytics.dueToday(live, now),
+      calendar: analytics.calendarMonth(live, now),
+      health: analytics.systemHealth(live),
     }),
-    [now],
+    [live, now],
   )
 
   const { stats } = data
+
+  // The fines page works the register out from payments as well as dates, so take
+  // the outstanding figure from there rather than counting it a second way.
+  const pendingFines = desk.fineRecords
+    .filter((record) => !record.settled)
+    .reduce((sum, record) => sum + record.amount, 0)
 
   const cards = allowed(user, [
     { label: 'Total Books', value: formatCompact(stats.totalBooks, locale), hint: 'Copies held' },
@@ -102,7 +103,7 @@ export default function DashboardPage() {
     { label: 'Total Members', value: formatCompact(stats.totalMembers, locale), hint: 'Registered borrowers', capability: CAPABILITIES.MEMBERSHIP_STATS },
     { label: 'New Members', value: formatNumber(stats.newMembersThisMonth, locale), tone: 'good', hint: 'This month', capability: CAPABILITIES.MEMBERSHIP_STATS },
     { label: 'Reserved Books', value: formatNumber(stats.reserved, locale), tone: 'brass', hint: 'Awaiting collection' },
-    { label: 'Pending Fines', value: formatCurrency(stats.pendingFines, locale), tone: 'alert', hint: 'Uncollected', capability: CAPABILITIES.FINANCE },
+    { label: 'Pending Fines', value: formatCurrency(pendingFines, locale), tone: 'alert', hint: 'Uncollected', capability: CAPABILITIES.FINANCE },
     { label: 'Books Added', value: formatNumber(stats.booksAddedThisMonth, locale), hint: 'This month', capability: CAPABILITIES.ACQUISITIONS },
     { label: 'Returned Today', value: formatNumber(stats.returnedToday, locale), tone: 'good', hint: 'Across the desk' },
   ])
@@ -127,8 +128,8 @@ export default function DashboardPage() {
     {
       label: 'Pending fines',
       hint: 'Charged but not yet collected',
-      count: stats.pendingFines,
-      display: formatCurrency(stats.pendingFines, locale),
+      count: pendingFines,
+      display: formatCurrency(pendingFines, locale),
       to: '/fines',
       tone: 'alert',
       capability: CAPABILITIES.FINANCE,

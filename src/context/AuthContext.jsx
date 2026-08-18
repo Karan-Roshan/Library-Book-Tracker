@@ -71,9 +71,16 @@ export function AuthProvider({ children }) {
     return updated
   }, [])
 
+  // Re-reads the signed-in user, for when they change their own details.
+  const refreshUser = useCallback(async () => {
+    const fresh = await auth.currentUser()
+    setUser(fresh)
+    return fresh
+  }, [])
+
   const value = useMemo(
-    () => ({ user, loading, needsSetup, signIn, claimLibrary, signOut, updateProfile }),
-    [user, loading, needsSetup, signIn, claimLibrary, signOut, updateProfile],
+    () => ({ user, loading, needsSetup, signIn, claimLibrary, signOut, updateProfile, refreshUser }),
+    [user, loading, needsSetup, signIn, claimLibrary, signOut, updateProfile, refreshUser],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

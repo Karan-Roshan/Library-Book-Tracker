@@ -23,6 +23,7 @@ const blank = () => ({
   status: 'Active',
   joinedAt: todayValue(),
   expiresAt: expiryFor(todayValue()),
+  idIssuedAt: '',
   avatar: null,
 })
 
@@ -38,9 +39,18 @@ const toForm = (member) =>
         status: member.status ?? 'Active',
         joinedAt: member.joinedAt?.slice(0, 10) ?? todayValue(),
         expiresAt: member.expiresAt?.slice(0, 10) ?? expiryFor(todayValue()),
+        idIssuedAt: member.idIssuedAt?.slice(0, 10) ?? '',
         avatar: member.avatar ?? null,
       }
     : blank()
+
+// The card cannot be handed over before they joined, nor on a day yet to come.
+const issueDateProblem = (issued, joined) => {
+  if (!issued) return null
+  if (issued > todayValue()) return 'The card cannot be issued in the future.'
+  if (joined && issued < joined) return 'The card cannot be issued before the joining date.'
+  return null
+}
 
 const initials = (name) =>
   name
@@ -112,6 +122,7 @@ export default function MemberDialog({ open, member = null, onClose, onSubmit })
       email: validateEmail(values.email),
       phone: validatePhone(values.phone),
       joinedAt: values.joinedAt ? null : 'Choose the joining date.',
+      idIssuedAt: issueDateProblem(values.idIssuedAt, values.joinedAt),
     }
     setErrors(nextErrors)
     if (Object.values(nextErrors).some(Boolean)) return
@@ -127,6 +138,7 @@ export default function MemberDialog({ open, member = null, onClose, onSubmit })
         joinedAt: joined.toISOString(),
         expiresAt: values.expiresAt ? new Date(values.expiresAt).toISOString() : null,
         dob: values.dob ? new Date(values.dob).toISOString() : null,
+        idIssuedAt: values.idIssuedAt ? new Date(values.idIssuedAt).toISOString() : null,
 
         gender: values.gender || null,
 
@@ -284,6 +296,32 @@ export default function MemberDialog({ open, member = null, onClose, onSubmit })
               <p id="member-expires-hint" className="mt-1.5 text-sm text-ink-400">
                 Six months from the joining date.
               </p>
+            </div>
+
+            <div>
+              <label htmlFor="member-id-issued" className={labelClass}>
+                ID issue date
+              </label>
+              <input
+                id="member-id-issued"
+                type="date"
+                max={todayValue()}
+                min={values.joinedAt || undefined}
+                value={values.idIssuedAt}
+                onChange={update('idIssuedAt')}
+                aria-invalid={errors.idIssuedAt ? 'true' : undefined}
+                aria-describedby={errors.idIssuedAt ? 'member-id-issued-error' : 'member-id-issued-hint'}
+                className={inputClass}
+              />
+              {errors.idIssuedAt ? (
+                <p id="member-id-issued-error" role="alert" className="mt-1.5 text-sm text-red-600">
+                  {errors.idIssuedAt}
+                </p>
+              ) : (
+                <p id="member-id-issued-hint" className="mt-1.5 text-sm text-ink-400">
+                  The day the membership card was handed over. Renewing sets this again.
+                </p>
+              )}
             </div>
 
             <div>

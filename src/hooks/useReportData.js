@@ -107,6 +107,9 @@ export function useReportData() {
       library,
       added: raw.addedMembers,
       overrides: raw.memberOverrides,
+      issued: raw.issued,
+      reservations: raw.reservations,
+      rules,
       now,
     })
 
@@ -116,6 +119,7 @@ export function useReportData() {
       overrides: raw.overrides,
       lostReports: raw.lostReports,
       books,
+      members,
       rules,
       now,
     })
@@ -124,6 +128,7 @@ export function useReportData() {
       library,
       placed: raw.reservations,
       books,
+      members,
       rules,
       now,
     })
@@ -134,9 +139,11 @@ export function useReportData() {
       borrowings,
       reservations,
       repairs: composeRepairs({ repairs: raw.repairs, books, members }),
-      lost: composeLostReports({ reports: raw.lostReports, library, books, borrowings }),
+      lost: composeLostReports({ reports: raw.lostReports, library, books, members, borrowings }),
       fineRecords: buildFineRecords({
         library: { ...library, borrowings: [...library.borrowings, ...raw.issued] },
+        books,
+        members,
         manualFines: raw.manualFines,
         payments: raw.payments,
         now,

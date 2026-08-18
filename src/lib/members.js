@@ -1,6 +1,7 @@
 // Member records with their borrowing, fines and membership dates attached.
 
-import { FINE_RATE_PER_DAY } from './fines.js'
+import { FINE_RATE_PER_DAY, daysOverdue } from './fines.js'
+import { indexById, mergeRows } from './join.js'
 
 const DAY = 86_400_000
 
@@ -67,9 +68,36 @@ function borrowingsByMember(borrowings) {
   return map
 }
 
+// Holds that no longer sit against the member: they have been met or given up.
+const CLOSED_HOLDS = new Set(['collected', 'cancelled', 'expired'])
+
 // Members with their borrowing, fines and overdue counts attached.
-export function composeMembers({ library, added = [], overrides = {}, now = new Date() }) {
-  const byMember = borrowingsByMember(library.borrowings)
+//
+// `issued` and `reservations` are what the desk and the assistant have recorded
+// since the seed. Without them a member who was issued a book this morning still
+// reads as having none out, on every screen that shows these counts.
+export function composeMembers({
+  library,
+  added = [],
+  overrides = {},
+  issued = [],
+  reservations = [],
+  rules,
+  now = new Date(),
+}) {
+  // Worked out the same way the fines register does it, so the total against a
+  // name here is the total the fines page will ask them for.
+  const rate = Number(rules?.finePerDay ?? FINE_RATE_PER_DAY)
+  const cap = Number(rules?.maxFine ?? 300)
+  const grace = Number(rules?.graceDays ?? 0)
+  const chargeFor = (borrowing) =>
+    Math.min(Math.max(0, daysOverdue(borrowing, now) - grace) * rate, cap)
+  const loans = mergeRows(library.borrowings, issued)
+  const holds = mergeRows(library.reservations, reservations).filter(
+    (hold) => !CLOSED_HOLDS.has(String(hold.status ?? '').toLowerCase()),
+  )
+
+  const byMember = borrowingsByMember(loans)
   const today = startOfDay(now)
 
   const seeded = library.members.map((member) => ({ ...member, isAdded: false }))
@@ -82,10 +110,14 @@ export function composeMembers({ library, added = [], overrides = {}, now = new 
       const borrowings = byMember.get(member.id) ?? []
       const outstanding = borrowings.filter((borrowing) => borrowing.returnedAt === null)
       const overdue = outstanding.filter((borrowing) => new Date(borrowing.dueAt) < today)
-      const pendingFine = borrowings.reduce(
-        (sum, borrowing) => (borrowing.fine > 0 && !borrowing.finePaid ? sum + borrowing.fine : sum),
-        0,
-      )
+      // A book still out is charged from its dates; one already back keeps
+      // whatever was settled on when it was returned.
+      const pendingFine = borrowings.reduce((sum, borrowing) => {
+        if (borrowing.finePaid) return sum
+        const amount = borrowing.returnedAt ? (borrowing.fine ?? 0) : chargeFor(borrowing)
+        return amount > 0 ? sum + amount : sum
+      }, 0)
+
       const paidFine = borrowings.reduce(
         (sum, borrowing) => (borrowing.fine > 0 && borrowing.finePaid ? sum + borrowing.fine : sum),
         0,
@@ -101,7 +133,7 @@ export function composeMembers({ library, added = [], overrides = {}, now = new 
         currentlyBorrowed: outstanding.length,
         returnedCount: borrowings.length - outstanding.length,
         overdueCount: overdue.length,
-        reservations: library.reservations.filter((r) => r.memberId === member.id).length,
+        reservations: holds.filter((hold) => hold.memberId === member.id).length,
         pendingFine,
         paidFine,
       }
@@ -139,8 +171,8 @@ export function filterMembers(members, { filters = {}, query = '', now = new Dat
 }
 
 // One member's borrowing, newest first.
-export function borrowingHistory(member, library, now = new Date()) {
-  const bookById = new Map(library.books.map((book) => [book.id, book]))
+export function borrowingHistory(member, library, books = [], now = new Date()) {
+  const bookById = indexById(books, library.books)
   const today = startOfDay(now)
 
   return [...member.borrowings]

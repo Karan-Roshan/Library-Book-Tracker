@@ -9,6 +9,8 @@ import FilterMenu from '../../components/FilterMenu.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { usePageSize } from '../../hooks/useTablePrefs.js'
 import { usePreferences } from '../../context/PreferencesContext.jsx'
+import { useSettings } from '../../context/SettingsContext.jsx'
+import { useToast } from '../../context/ToastContext.jsx'
 import { formatDate } from '../../lib/format.js'
 import { CAPABILITIES, can } from '../../lib/permissions.js'
 import { downloadFile, toCSV } from '../../lib/csv.js'
@@ -59,7 +61,9 @@ const CLEARED = {
 export default function ReservationsPage() {
   const { user } = useAuth()
   const { locale } = usePreferences()
+  const { settings } = useSettings()
   const desk = useCirculation()
+  const { toast } = useToast()
 
   const [filters, setFilters] = useState(CLEARED)
   const [page, setPage] = useState(1)
@@ -67,10 +71,11 @@ export default function ReservationsPage() {
   const [placing, setPlacing] = useState(false)
   const [member, setMember] = useState(null)
   const [book, setBook] = useState(null)
-  const [notice, setNotice] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [deleting, setDeleting] = useState(null)
 
   const mayExport = can(user, CAPABILITIES.EXPORT)
+  const askFirst = settings.system.confirmDestructive
 
   const visible = useMemo(
     () => filterReservations(desk.reservations, { ...filters, now: desk.now }),
@@ -106,7 +111,7 @@ export default function ReservationsPage() {
     try {
       await work()
       await desk.refresh()
-      setNotice(message)
+      toast(message)
     } finally {
       setBusy(false)
     }
@@ -121,6 +126,12 @@ export default function ReservationsPage() {
     setBook(null)
     setPlacing(false)
   }
+
+  const destroy = (row) =>
+    run(
+      () => circulation.deleteReservation(row, { staff: user.name }),
+      `Reservation ${row.code} deleted.`,
+    )
 
   const actionsFor = (row) => {
     const actions = []
@@ -153,6 +164,13 @@ export default function ReservationsPage() {
           ),
       })
     }
+
+    actions.push({
+      label: 'Delete reservation',
+      tone: 'danger',
+      onSelect: () => (askFirst ? setDeleting(row) : destroy(row)),
+    })
+
     return actions
   }
 
@@ -191,12 +209,6 @@ export default function ReservationsPage() {
         <StatCard label="Expired" value={stats.expired} />
         <StatCard label="Collected" value={stats.collected} />
       </div>
-
-      {notice && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-300">
-          {notice}
-        </div>
-      )}
 
       {placing && (
         <Card title="Place a hold">
@@ -386,6 +398,51 @@ export default function ReservationsPage() {
           onSize={setPageSize}
         />
       </Card>
+
+      {deleting && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/50 p-4 backdrop-blur-sm">
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-reservation-title"
+            className="animate-rise w-full max-w-md rounded-xl border border-ink-100 bg-white p-5 shadow-xl dark:border-ink-800 dark:bg-ink-900"
+          >
+            <h2
+              id="delete-reservation-title"
+              className="font-display text-lg text-ink-900 dark:text-white"
+            >
+              Delete reservation {deleting.code}?
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-ink-500 dark:text-ink-400">
+              {deleting.memberName}&rsquo;s hold on {deleting.bookTitle} goes from every
+              screen, the member&rsquo;s included, and the queue behind it moves up. Cancelling
+              instead keeps the record. This cannot be undone.
+            </p>
+
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDeleting(null)}
+                className="rounded-lg border border-ink-200 px-4 py-2.5 text-sm font-semibold text-ink-700 transition-colors hover:bg-ink-50 dark:border-ink-700 dark:text-ink-200 dark:hover:bg-ink-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={async () => {
+                  const row = deleting
+                  setDeleting(null)
+                  await destroy(row)
+                }}
+                className="rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-500 disabled:bg-red-300"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

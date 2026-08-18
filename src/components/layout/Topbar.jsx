@@ -7,6 +7,8 @@ import { useAuth } from '../../context/AuthContext.jsx'
 import { usePreferences } from '../../context/PreferencesContext.jsx'
 import { useDismiss } from '../../hooks/useDismiss.js'
 import { inboxFor, isUnread } from '../../lib/messages.js'
+import { useLive } from '../../hooks/useLive.js'
+import { isMember } from '../../lib/permissions.js'
 import * as messagesService from '../../services/messages.js'
 
 const initials = (name) =>
@@ -24,9 +26,15 @@ function NotificationsBell() {
   const close = useCallback(() => setOpen(false), [])
   const ref = useDismiss(open, close)
 
+  const load = useCallback(() => messagesService.listMessages().then(setMessages), [])
+
   useEffect(() => {
-    messagesService.listMessages().then(setMessages)
-  }, [open])
+    load()
+  }, [load, open])
+
+  // Without this the badge only caught up when the panel was opened, so a notice
+  // raised while the member sat on their dashboard went unseen.
+  useLive(['messages'], load)
 
   const unread = useMemo(
     () => inboxFor(messages, user.id).filter((message) => isUnread(message, user.id)),
@@ -34,6 +42,9 @@ function NotificationsBell() {
   )
 
   const urgent = unread.length
+
+  // Members read theirs on their own page; the staff inbox is out of bounds.
+  const inbox = isMember(user) ? '/my/notifications' : '/notifications'
 
   return (
     <div ref={ref} className="relative">
@@ -69,7 +80,7 @@ function NotificationsBell() {
             {unread.map((message) => (
               <li key={message.id}>
                 <Link
-                  to="/notifications"
+                  to={inbox}
                   onClick={close}
                   className="flex items-start gap-3 border-b border-ink-50 px-4 py-3 transition-colors hover:bg-ink-50 dark:border-ink-700 dark:hover:bg-ink-700"
                 >
@@ -161,11 +172,11 @@ function ProfileMenu() {
             <p className="truncate text-xs text-ink-400">{user.email}</p>
           </div>
           <Link
-            to="/profile"
+            to={isMember(user) ? '/my/profile' : '/profile'}
             onClick={close}
             className="block px-4 py-2.5 text-sm text-ink-700 transition-colors hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-700"
           >
-            My profile
+            {isMember(user) ? 'Profile & Membership' : 'My profile'}
           </Link>
           <button
             type="button"

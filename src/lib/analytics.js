@@ -9,8 +9,20 @@ const startOfDay = (date) => {
 }
 
 const isSameDay = (a, b) => startOfDay(a).getTime() === startOfDay(b).getTime()
-const isOutstanding = (borrowing) => borrowing.returnedAt === null
+const isOutstanding = (borrowing) => !borrowing.returnedAt && borrowing.status !== 'Lost'
 const monthKey = (date) => `${new Date(date).getFullYear()}-${new Date(date).getMonth()}`
+
+// A count that survives a record written at the desk, where the seeded columns
+// the demo catalogue carries may simply not be there.
+const count = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0)
+
+// Holds the library is still keeping a copy back for. The seed writes these in
+// lower case, the desk in title case, so both readings are accepted.
+const HELD = new Set(['waiting', 'ready', 'ready for pickup'])
+const isHeld = (reservation) => HELD.has(String(reservation.status ?? 'waiting').toLowerCase())
+
+// When the hold was placed — again, under either name.
+const placedOn = (reservation) => reservation.placedAt ?? reservation.reservedAt ?? null
 
 // Indexes the library once, so the widgets below are lookups rather than scans.
 export function buildIndex(library) {
@@ -26,14 +38,17 @@ export function summarize(library, now = new Date()) {
   const today = startOfDay(now)
   const thisMonth = monthKey(now)
 
-  const totalCopies = books.reduce((sum, book) => sum + book.copies, 0)
-  const lost = books.reduce((sum, book) => sum + book.lost, 0)
-  const maintenance = books.reduce((sum, book) => sum + book.maintenance, 0)
+  const totalCopies = books.reduce((sum, book) => sum + count(book.copies), 0)
+  const lost = books.reduce((sum, book) => sum + count(book.lost), 0)
+  const maintenance = books.reduce(
+    (sum, book) => sum + count(book.maintenance) + count(book.repairing),
+    0,
+  )
 
   const outstanding = borrowings.filter(isOutstanding)
   const issued = outstanding.length
   const overdue = outstanding.filter((borrowing) => new Date(borrowing.dueAt) < today).length
-  const reserved = reservations.length
+  const reserved = reservations.filter(isHeld).length
 
   const pendingFines = borrowings.reduce(
     (sum, borrowing) => (borrowing.fine > 0 && !borrowing.finePaid ? sum + borrowing.fine : sum),
@@ -51,8 +66,8 @@ export function summarize(library, now = new Date()) {
     reserved,
     pendingFines,
     booksAddedThisMonth: books
-      .filter((book) => monthKey(book.addedAt) === thisMonth)
-      .reduce((sum, book) => sum + book.copies, 0),
+      .filter((book) => book.addedAt && monthKey(book.addedAt) === thisMonth)
+      .reduce((sum, book) => sum + count(book.copies), 0),
     returnedToday: borrowings.filter((borrowing) => borrowing.returnedAt && isSameDay(borrowing.returnedAt, now))
       .length,
     lost,
@@ -150,7 +165,7 @@ export function todaySummary(library, now = new Date()) {
   const newMembers = library.members.filter((member) => isSameDay(member.joinedAt, now)).length
   const fineCollected = library.borrowings
     .filter((borrowing) => borrowing.finePaid && borrowing.returnedAt && isSameDay(borrowing.returnedAt, now))
-    .reduce((sum, borrowing) => sum + borrowing.fine, 0)
+    .reduce((sum, borrowing) => sum + count(borrowing.fine), 0)
 
   return { issued, returned, newMembers, fineCollected }
 }
@@ -205,7 +220,8 @@ export function popularBooks(library, limit = 5) {
       borrows: borrows.get(book.id) ?? 0,
       availableCopies: Math.max(
         0,
-        book.copies - (out.get(book.id) ?? 0) - book.lost - book.maintenance,
+        book.available ??
+          count(book.copies) - (out.get(book.id) ?? 0) - count(book.lost) - count(book.maintenance),
       ),
     }))
     .sort((a, b) => b.borrows - a.borrows)
@@ -253,7 +269,7 @@ export function notifications(library, now = new Date()) {
   const dueTodayCount = library.borrowings.filter(
     (borrowing) => isOutstanding(borrowing) && isSameDay(borrowing.dueAt, now),
   ).length
-  const readyReservations = library.reservations.filter((r) => r.status === 'ready').length
+  const readyReservations = library.reservations.filter(isHeld).length
 
   const lowStock = popularBooks(library, 12).filter((book) => book.availableCopies <= 2)
 
@@ -322,9 +338,14 @@ export function calendarMonth(library, now = new Date()) {
     marks.set(day.getDate(), existing)
   }
 
+  const events = library.events ?? []
+
   for (const borrowing of library.borrowings) if (isOutstanding(borrowing)) mark(borrowing.dueAt, 'due')
-  for (const reservation of library.reservations) mark(reservation.placedAt, 'reservation')
-  for (const event of library.events) mark(event.date, event.kind)
+  for (const reservation of library.reservations) {
+    const placed = placedOn(reservation)
+    if (placed) mark(placed, 'reservation')
+  }
+  for (const event of events) mark(event.date, event.kind)
 
   return {
     year,
@@ -333,7 +354,7 @@ export function calendarMonth(library, now = new Date()) {
 
     leadingBlanks: (first.getDay() + 6) % 7,
     marks,
-    events: library.events
+    events: events
       .filter((event) => new Date(event.date) >= startOfDay(now))
       .sort((a, b) => new Date(a.date) - new Date(b.date))
       .slice(0, 3),
@@ -372,19 +393,20 @@ export function search(library, query, limit = 6) {
   for (const book of library.books) {
     if (results.length >= limit * 3) break
     if (
-      book.title.toLowerCase().includes(term) ||
-      book.isbn.includes(term) ||
-      book.author.toLowerCase().includes(term)
+      [book.title, book.author, book.isbn, book.code]
+        .filter(Boolean)
+        .some((field) => String(field).toLowerCase().includes(term))
     ) {
-      push('Book', book.title, `${book.author} · ${book.category} · ${book.isbn}`, '/books')
+      push('Book', book.title, `${book.author} · ${book.category} · ${book.isbn ?? '—'}`, '/books')
     }
   }
 
   for (const member of library.members) {
     if (results.length >= limit * 3) break
     if (
-      member.name.toLowerCase().includes(term) ||
-      member.membershipNumber.toLowerCase().includes(term)
+      [member.name, member.membershipNumber, member.email]
+        .filter(Boolean)
+        .some((field) => String(field).toLowerCase().includes(term))
     ) {
       push('Member', member.name, member.membershipNumber, '/members')
     }

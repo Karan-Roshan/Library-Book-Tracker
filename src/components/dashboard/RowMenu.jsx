@@ -42,6 +42,10 @@ export default function RowMenu({ label, items }) {
     return () => document.removeEventListener('mousemove', handleHover)
   }, [open, close])
 
+  // Nothing to offer on this row: no button, rather than one that opens on an
+  // empty panel.
+  if (sorted.length === 0) return null
+
   const toggle = () => {
     const rect = buttonRef.current?.getBoundingClientRect()
     if (rect) {

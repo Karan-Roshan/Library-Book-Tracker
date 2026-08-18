@@ -119,17 +119,29 @@ export function Facts({ legend, rows }) {
   )
 }
 
+// How many rows the list will draw at once. Beyond this it says how many more
+// there are rather than putting thousands of them on the page.
+const LOOKUP_ROWS = 250
+
 export function Lookup({ label, placeholder, items, value, onSelect, describe, search, autoFocus, required }) {
   const [term, setTerm] = useState('')
   const [open, setOpen] = useState(false)
   const ref = useDismiss(open, () => setOpen(false))
 
-  const matches = useMemo(() => {
+  // An empty box lists everything, so the field can be browsed as well as
+  // searched — you should not have to know a title before you can pick it.
+  const { matches, hidden } = useMemo(() => {
     const needle = term.trim().toLowerCase()
-    if (!needle) return []
-    return items
-      .filter((item) => search(item).some((field) => String(field ?? '').toLowerCase().includes(needle)))
-      .slice(0, 8)
+    const found = needle
+      ? items.filter((item) =>
+          search(item).some((field) => String(field ?? '').toLowerCase().includes(needle)),
+        )
+      : items
+
+    return {
+      matches: found.slice(0, LOOKUP_ROWS),
+      hidden: Math.max(0, found.length - LOOKUP_ROWS),
+    }
   }, [term, items, search])
 
   return (
@@ -187,6 +199,12 @@ export function Lookup({ label, placeholder, items, value, onSelect, describe, s
               </button>
             </li>
           ))}
+
+          {hidden > 0 && (
+            <li className="border-t border-ink-100 px-3.5 py-2 text-xs text-ink-400 dark:border-ink-700">
+              {hidden} more — keep typing to narrow this down.
+            </li>
+          )}
         </ul>
       )}
 

@@ -1,6 +1,6 @@
 // The catalogue: every title, its copies and where they are.
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import Breadcrumbs from '../components/layout/Breadcrumbs.jsx'
 import Card from '../components/dashboard/Card.jsx'
 import StatCard from '../components/dashboard/StatCard.jsx'
@@ -8,15 +8,13 @@ import RowMenu, { ACTION_CELL, ACTION_HEAD } from '../components/dashboard/RowMe
 import IssueBookDialog from '../components/dashboard/IssueBookDialog.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { usePreferences } from '../context/PreferencesContext.jsx'
-import { library } from '../data/demoLibrary.js'
-import { formatCurrency, formatDate } from '../lib/format.js'
+import { useToast } from '../context/ToastContext.jsx'
+import { useCirculation } from '../hooks/useCirculation.js'
+import { formatCurrency } from '../lib/format.js'
 import { downloadFile, toCSV } from '../lib/csv.js'
-import { CATEGORY_NAMES, composeBooks, filterBooks } from '../lib/books.js'
-import { composeMembers } from '../lib/members.js'
-import * as booksService from '../services/books.js'
+import { CATEGORY_NAMES, filterBooks } from '../lib/books.js'
+import { issueEligibility } from '../lib/circulation.js'
 import * as circulation from '../services/circulation.js'
-import * as membersService from '../services/members.js'
-import * as repairsService from '../services/repairs.js'
 
 const COLUMNS = [
   'Book ID',
@@ -53,47 +51,15 @@ export default function BooksPage() {
   const { user } = useAuth()
   const { locale } = usePreferences()
 
-  const [added, setAdded] = useState([])
-  const [lostReports, setLostReports] = useState([])
-  const [repairs, setRepairs] = useState([])
-  const [issued, setIssued] = useState([])
-  const [members, setMembers] = useState([])
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('all')
   const [issuing, setIssuing] = useState(null)
-  const [notice, setNotice] = useState(null)
 
-  const now = useMemo(() => new Date(), [])
-
-  const refresh = useCallback(() => {
-    Promise.all([
-      booksService.listAddedBooks(),
-      booksService.listIssuedBorrowings(),
-      membersService.listAddedMembers(),
-      membersService.listOverrides(),
-      circulation.listLostReports(),
-      repairsService.listRepairs(),
-    ]).then(([books, borrowings, extraMembers, overrides, lost, jobs]) => {
-      setAdded(books)
-      setIssued(borrowings)
-      setLostReports(lost)
-      setRepairs(jobs)
-      setMembers(composeMembers({ library, added: extraMembers, overrides, now }))
-    })
-  }, [now])
-
-  useEffect(refresh, [refresh])
-
-  useEffect(() => {
-    if (!notice) return undefined
-    const timer = setTimeout(() => setNotice(null), 5000)
-    return () => clearTimeout(timer)
-  }, [notice])
-
-  const books = useMemo(
-    () => composeBooks({ library, added, issued, lostReports, repairs, now }),
-    [added, issued, lostReports, repairs, now],
-  )
+  // The catalogue reads the desk's copy of the library, so what it calls
+  // available is what the issue counter would allow.
+  const desk = useCirculation()
+  const { toast } = useToast()
+  const { books, members } = desk
 
   const visible = useMemo(
     () => filterBooks(books, { query, category }),
@@ -110,26 +76,42 @@ export default function BooksPage() {
   )
 
   async function handleIssue({ book, member, issuedAt }) {
-    await circulation.issueBook({ book, member, issuedAt, staff: user.name })
-    setNotice(`${book.title} issued to ${member.name}.`)
-    refresh()
+    if (!desk.rules) throw new Error('The borrowing rules are still loading — try again in a moment.')
+
+    // The same test the issue counter and the assistant apply, so a book cannot
+    // be lent here on terms that would be refused there.
+    const verdict = issueEligibility({
+      member,
+      book,
+      borrowings: desk.borrowings,
+      owed: desk.owedBy(member.membershipNumber),
+      reservations: desk.reservations,
+      rules: desk.rules,
+      now: desk.now,
+    })
+
+    // Thrown rather than announced, so the reason appears in the dialog beside the
+    // form the person is still filling in.
+    if (!verdict.ok) throw new Error(verdict.blocks.join(' '))
+
+    await circulation.issueBook({
+      book,
+      member,
+      issuedAt,
+      rules: desk.rules,
+      staff: user.name,
+      reservations: desk.reservations,
+      copies: desk.copies,
+    })
+    await desk.refresh()
+    toast(`${book.title} issued to ${member.name}.`)
+    verdict.warnings?.forEach((warning) => toast(warning, 'info'))
   }
 
   const cell = 'whitespace-nowrap px-4 py-3 text-ink-500 dark:text-ink-400'
 
   return (
     <div className="space-y-6">
-      {notice && (
-        <div
-          role="status"
-          className="animate-rise fixed left-1/2 top-20 z-50 w-[min(28rem,90vw)] -translate-x-1/2 lg:left-[calc(50%+8rem)]"
-        >
-          <div className="rounded-lg border border-brass-200 bg-brass-50 px-4 py-3 text-sm text-brass-900 shadow-lg dark:border-brass-500/30 dark:bg-ink-800 dark:text-brass-200">
-            {notice}
-          </div>
-        </div>
-      )}
-
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <Breadcrumbs />

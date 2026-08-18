@@ -156,7 +156,14 @@ export default function RepairsPage() {
   )
 
   const members = useMemo(
-    () => composeMembers({ library, added: raw.extra, overrides: raw.overrides, now }),
+    () =>
+      composeMembers({
+        library,
+        added: raw.extra,
+        overrides: raw.overrides,
+        issued: raw.issued,
+        now,
+      }),
     [raw, now],
   )
 

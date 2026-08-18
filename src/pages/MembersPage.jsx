@@ -26,6 +26,7 @@ import {
 } from '../lib/members.js'
 import * as membersService from '../services/members.js'
 import * as memberAccess from '../services/memberAccess.js'
+import * as circulation from '../services/circulation.js'
 
 const COLUMNS = [
   'Profile',
@@ -92,6 +93,9 @@ export default function MembersPage({ autoAdd = false }) {
   const { locale } = usePreferences()
 
   const [added, setAdded] = useState([])
+  const [issued, setIssued] = useState([])
+  const [rules, setRules] = useState(null)
+  const [holds, setHolds] = useState([])
 
   const [logins, setLogins] = useState([])
   const [access, setAccess] = useState(null)
@@ -114,20 +118,36 @@ export default function MembersPage({ autoAdd = false }) {
       membersService.listAddedMembers(),
       membersService.listOverrides(),
       memberAccess.listLogins(),
-    ]).then(([rows, patches, issued]) => {
+      circulation.listIssuedBorrowings(),
+      circulation.listReservations(),
+      circulation.getRules(),
+    ]).then(([rows, patches, accounts, loans, reservations, active]) => {
       setAdded(rows)
       setOverrides(patches)
-      setLogins(issued)
+      setLogins(accounts)
+      setIssued(loans)
+      setHolds(reservations)
+      setRules(active)
     })
   }, [])
 
   useEffect(refresh, [refresh])
 
-  useLive(['addedMembers', 'memberLogins', 'values/memberOverrides'], refresh)
+  useLive(
+    [
+      'addedMembers',
+      'memberLogins',
+      'issuedBorrowings',
+      'reservations',
+      'values/memberOverrides',
+      'values/circulationRules',
+    ],
+    refresh,
+  )
 
   const members = useMemo(
-    () => composeMembers({ library, added, overrides, now }),
-    [added, overrides, now],
+    () => composeMembers({ library, added, overrides, issued, reservations: holds, rules, now }),
+    [added, overrides, issued, holds, rules, now],
   )
 
   const stats = useMemo(() => summarizeMembers(members, now), [members, now])
