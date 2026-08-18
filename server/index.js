@@ -52,15 +52,61 @@ const VALUES = new Set([
   'preferences',
 ])
 
-const client = new MongoClient(MONGODB_URI)
-await client.connect()
-const db = client.db(DB_NAME)
-console.log(`Connected to MongoDB at ${MONGODB_URI}/${DB_NAME}`)
+// Never print the password, wherever the connection string is logged.
+const safeUri = (uri) => String(uri).replace(/\/\/([^:]+):([^@]+)@/, '//$1:****@')
 
-for (const name of COLLECTIONS) {
-  await db.collection(name).createIndex({ id: 1 }, { unique: true })
+const client = new MongoClient(MONGODB_URI, {
+  // Fail in seconds rather than hanging. A request that hangs is answered by
+  // the host's proxy with a 502 and no explanation; one that fails can say why.
+  serverSelectionTimeoutMS: 8000,
+  connectTimeoutMS: 8000,
+})
+
+// `db` stays null until the connection is up. Every route below checks it, so
+// a database that is unreachable produces a clear message rather than a hang.
+let db = null
+let dbError = null
+
+async function connectToMongo() {
+  try {
+    await client.connect()
+    const connected = client.db(DB_NAME)
+
+    for (const name of COLLECTIONS) {
+      await connected.collection(name).createIndex({ id: 1 }, { unique: true })
+    }
+    await connected.collection('values').createIndex({ name: 1 }, { unique: true })
+
+    db = connected
+    dbError = null
+    console.log(`Connected to MongoDB at ${safeUri(MONGODB_URI)}/${DB_NAME}`)
+  } catch (error) {
+    db = null
+    dbError = error.message
+    console.error(`MongoDB unavailable: ${error.message}`)
+    console.error('Retrying in 5s. Check the connection string and the IP allowlist.')
+    setTimeout(connectToMongo, 5000)
+  }
 }
-await db.collection('values').createIndex({ name: 1 }, { unique: true })
+
+/*
+  Deliberately not awaited.
+
+  Connecting before `app.listen` meant an unreachable database took the whole
+  service down with it: the process exited, the HTTP server never started, and
+  the host answered every request — the app itself included — with a bare 502.
+  Now the site comes up either way, and only the data routes report the fault.
+*/
+connectToMongo()
+
+// Answers the data routes while the database is still down.
+const requireDb = (request, response, next) => {
+  if (db) return next()
+  response.status(503).json({
+    error: 'The library database is not connected.',
+    detail: dbError ?? 'Still connecting.',
+  })
+}
 
 const app = express()
 
@@ -211,14 +257,21 @@ app.get('/api/events', (request, response) => {
 
 const originOf = (request) => request.get('X-Client-Id') ?? null
 
-app.get('/api/health', (_request, response) => response.json({ ok: true, db: DB_NAME }))
+app.get('/api/health', (_request, response) =>
+  response.status(db ? 200 : 503).json({
+    ok: Boolean(db),
+    db: DB_NAME,
+    database: db ? 'connected' : 'unavailable',
+    ...(dbError ? { detail: dbError } : {}),
+  }),
+)
 
-app.get('/api/collections/:name', named(COLLECTIONS), async (request, response) => {
+app.get('/api/collections/:name', requireDb, named(COLLECTIONS), async (request, response) => {
   const rows = await db.collection(request.params.name).find({}).toArray()
   response.json(rows.map(strip))
 })
 
-app.post('/api/collections/:name', named(COLLECTIONS), async (request, response) => {
+app.post('/api/collections/:name', requireDb, named(COLLECTIONS), async (request, response) => {
   const document = request.body
   if (!document?.id) return response.status(400).json({ error: 'Document needs an id' })
 
@@ -232,7 +285,7 @@ app.post('/api/collections/:name', named(COLLECTIONS), async (request, response)
   response.status(201).json(stored)
 })
 
-app.patch('/api/collections/:name/:id', named(COLLECTIONS), appendOnly, async (request, response) => {
+app.patch('/api/collections/:name/:id', requireDb, named(COLLECTIONS), appendOnly, async (request, response) => {
   const result = await db
     .collection(request.params.name)
     .findOneAndUpdate(
@@ -245,18 +298,18 @@ app.patch('/api/collections/:name/:id', named(COLLECTIONS), appendOnly, async (r
   response.json(strip(result))
 })
 
-app.delete('/api/collections/:name/:id', named(COLLECTIONS), appendOnly, async (request, response) => {
+app.delete('/api/collections/:name/:id', requireDb, named(COLLECTIONS), appendOnly, async (request, response) => {
   await db.collection(request.params.name).deleteOne({ id: request.params.id })
   broadcast({ collection: request.params.name, action: 'delete', id: request.params.id, origin: originOf(request) })
   response.status(204).end()
 })
 
-app.get('/api/values/:name', named(VALUES), async (request, response) => {
+app.get('/api/values/:name', requireDb, named(VALUES), async (request, response) => {
   const row = await db.collection('values').findOne({ name: request.params.name })
   response.json({ value: row?.value ?? null })
 })
 
-app.put('/api/values/:name', named(VALUES), async (request, response) => {
+app.put('/api/values/:name', requireDb, named(VALUES), async (request, response) => {
   await db
     .collection('values')
     .updateOne(

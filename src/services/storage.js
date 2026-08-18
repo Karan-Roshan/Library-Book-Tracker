@@ -32,7 +32,26 @@ async function request(path, options) {
   }
 
   if (!response.ok) {
-    throw new StorageError(`The database rejected that request (${response.status}).`)
+    // Say what actually went wrong. A bare status code sends the reader looking
+    // for a fault in the app when the answer — "the database is not connected",
+    // "the service is starting" — is right there in the reply.
+    const reason = await response
+      .clone()
+      .json()
+      .then((body) => [body?.error, body?.detail].filter(Boolean).join(' '))
+      .catch(() => '')
+
+    if (response.status === 503) {
+      throw new StorageError(reason || 'The library database is not connected. Try again shortly.')
+    }
+    if (response.status === 502 || response.status === 504) {
+      throw new StorageError(
+        'The library service is not responding — it may still be starting up. Wait a moment and try again.',
+      )
+    }
+    throw new StorageError(
+      reason || `The database rejected that request (${response.status}).`,
+    )
   }
   return response.status === 204 ? null : response.json()
 }
